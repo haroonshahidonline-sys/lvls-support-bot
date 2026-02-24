@@ -25,18 +25,14 @@ export function buildChannelCheckBlocks(data: CheckResult): KnownBlock[] {
   const total = data.totalUnanswered || 0;
   const channels = data.unansweredByChannel || [];
 
+  // ── ALL CLEAR ─────────────────────────────────────
   if (total === 0) {
-    // Clean "all clear" message
     blocks.push(
-      {
-        type: 'header',
-        text: { type: 'plain_text', text: ':white_check_mark:  All Clear', emoji: true },
-      },
       {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `Scanned *${data.channelsScanned}* channel(s) — no unanswered messages found.`,
+          text: `:white_check_mark:  *All clear* — scanned *${data.channelsScanned}* channels, no unanswered messages.`,
         },
       },
     );
@@ -45,7 +41,7 @@ export function buildChannelCheckBlocks(data: CheckResult): KnownBlock[] {
       blocks.push({
         type: 'context',
         elements: [
-          { type: 'mrkdwn', text: `:lock: _${data.skippedChannels} private channel(s) skipped — invite the bot to access them_` },
+          { type: 'mrkdwn', text: `:lock: ${data.skippedChannels} private channel(s) skipped` },
         ],
       });
     }
@@ -53,42 +49,45 @@ export function buildChannelCheckBlocks(data: CheckResult): KnownBlock[] {
     return blocks;
   }
 
-  // Header with count
+  // ── HEADER ────────────────────────────────────────
+  const urgencyEmoji = total >= 10 ? ':rotating_light:' : total >= 5 ? ':warning:' : ':mailbox_with_mail:';
+
   blocks.push(
     {
       type: 'header',
-      text: { type: 'plain_text', text: `:mailbox_with_mail:  ${total} Unanswered Message${total !== 1 ? 's' : ''}`, emoji: true },
+      text: { type: 'plain_text', text: `${urgencyEmoji}  ${total} Unanswered Message${total !== 1 ? 's' : ''} Found`, emoji: true },
     },
     {
       type: 'context',
       elements: [
-        { type: 'mrkdwn', text: `Scanned *${data.channelsScanned}* channel(s) | *${channels.length}* need attention` },
+        { type: 'mrkdwn', text: `*${data.channelsScanned}* channels scanned  |  *${channels.length}* with unanswered messages` },
       ],
     },
     { type: 'divider' },
   );
 
-  // Each channel with its unanswered messages
-  for (const ch of channels.slice(0, 10)) { // Limit to 10 channels for Block Kit
+  // ── CHANNEL SECTIONS ──────────────────────────────
+  for (const ch of channels.slice(0, 10)) {
+    // Channel header
     blocks.push({
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `:speech_balloon:  *<#${ch.channelId}>*  —  ${ch.messages.length} unanswered`,
+        text: `:speech_balloon:  <#${ch.channelId}>  ·  *${ch.messages.length}* unanswered`,
       },
     });
 
-    // Show up to 5 messages per channel
+    // Messages as compact quote blocks
     const msgLines = ch.messages.slice(0, 5).map(m => {
-      const preview = m.text.length > 120 ? m.text.substring(0, 120) + '...' : m.text;
-      return `>  <@${m.user}> _(${m.age})_: ${preview}`;
+      const preview = m.text.length > 100 ? m.text.substring(0, 100) + '…' : m.text;
+      return `> <@${m.user}>  _${m.age}_\n> ${preview}`;
     });
 
     blocks.push({
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: msgLines.join('\n'),
+        text: msgLines.join('\n\n'),
       },
     });
 
@@ -96,31 +95,32 @@ export function buildChannelCheckBlocks(data: CheckResult): KnownBlock[] {
       blocks.push({
         type: 'context',
         elements: [
-          { type: 'mrkdwn', text: `_...and ${ch.messages.length - 5} more in this channel_` },
+          { type: 'mrkdwn', text: `+ ${ch.messages.length - 5} more in this channel` },
         ],
       });
     }
+
+    blocks.push({ type: 'divider' });
   }
 
+  // ── OVERFLOW NOTE ─────────────────────────────────
   if (channels.length > 10) {
     blocks.push({
       type: 'context',
       elements: [
-        { type: 'mrkdwn', text: `_...and ${channels.length - 10} more channel(s) with unanswered messages_` },
+        { type: 'mrkdwn', text: `+ *${channels.length - 10}* more channels with unanswered messages` },
       ],
     });
   }
 
+  // ── SKIP NOTE ─────────────────────────────────────
   if (data.skippedChannels && data.skippedChannels > 0) {
-    blocks.push(
-      { type: 'divider' },
-      {
-        type: 'context',
-        elements: [
-          { type: 'mrkdwn', text: `:lock: _${data.skippedChannels} private channel(s) skipped — invite the bot to access them_` },
-        ],
-      },
-    );
+    blocks.push({
+      type: 'context',
+      elements: [
+        { type: 'mrkdwn', text: `:lock: ${data.skippedChannels} private channel(s) skipped — invite the bot to access them` },
+      ],
+    });
   }
 
   return blocks;

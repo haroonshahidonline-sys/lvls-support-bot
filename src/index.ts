@@ -9,6 +9,7 @@ import { createReminderWorker, createDeadlineWorker, startDeadlineChecker } from
 import { processReminder, setSlackApp as setReminderSlackApp } from './scheduler/workers/reminder-worker.js';
 import { processDeadlineCheck, setSlackApp as setDeadlineSlackApp } from './scheduler/workers/deadline-checker.js';
 import { setSlackApp as setExecutorSlackApp } from './agents/tools/executor.js';
+import { setSlackApp as setChannelJoinSlackApp, joinAllChannels } from './services/channel-join-service.js';
 import { logger } from './utils/logger.js';
 
 async function main() {
@@ -39,6 +40,7 @@ async function main() {
   setExecutorSlackApp(app);
   setReminderSlackApp(app);
   setDeadlineSlackApp(app);
+  setChannelJoinSlackApp(app);
 
   const reminderWorker = createReminderWorker(processReminder);
   const deadlineWorker = createDeadlineWorker(processDeadlineCheck);
@@ -48,6 +50,10 @@ async function main() {
 
   // 5. Start the Slack app
   await app.start();
+
+  // 6. Auto-join all public channels in the workspace
+  const joinResult = await joinAllChannels();
+  logger.info(`Channels: ${joinResult.joined} joined, ${joinResult.alreadyIn} already in, ${joinResult.skipped} skipped`);
 
   logger.info('=================================');
   logger.info(`${config.BOT_NAME} is running!`);
