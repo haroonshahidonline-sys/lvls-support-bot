@@ -32,8 +32,35 @@ export function registerMessageListeners(app: App): void {
         textPreview: msg.text.substring(0, 100),
       }, 'Processing message');
 
+      // Show typing indicator — post a temporary "thinking" message
+      let thinkingTs: string | undefined;
+      try {
+        const thinkingResult = await app.client.chat.postMessage({
+          token: config.SLACK_BOT_TOKEN,
+          channel: msg.channel || '',
+          text: ':hourglass_flowing_sand: Thinking...',
+          thread_ts: msg.thread_ts || msg.ts,
+        });
+        thinkingTs = thinkingResult.ts;
+      } catch (e) {
+        // Non-critical — continue without typing indicator
+      }
+
       // Run the orchestrator — it classifies + dispatches to the right agent autonomously
       const response = await orchestrate(msg.text, agentContext);
+
+      // Delete the "thinking" message now that we have a response
+      if (thinkingTs) {
+        try {
+          await app.client.chat.delete({
+            token: config.SLACK_BOT_TOKEN,
+            channel: msg.channel || '',
+            ts: thinkingTs,
+          });
+        } catch (e) {
+          // Non-critical — message may already be gone
+        }
+      }
 
       // Handle the response based on action
       if (response.action === 'send_message' && response.metadata?.targetChannel) {

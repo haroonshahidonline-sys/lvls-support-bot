@@ -2,6 +2,7 @@ import { BaseAgent } from './base-agent.js';
 import { AgentContext, AgentResponse, ToolExecution } from '../types/agent.js';
 import { COMMUNICATION_TOOLS } from './tools/definitions.js';
 import { buildApprovalBlocks } from '../slack/blocks/approval-blocks.js';
+import { buildChannelCheckBlocks } from '../slack/blocks/channel-check-blocks.js';
 import type { Tool } from '../services/claude.js';
 
 const COMMUNICATION_SYSTEM_PROMPT = `You are the Communication Agent for LVL'S Support Bot — the messaging specialist for LVL'S Digital Marketing Agency.
@@ -81,6 +82,19 @@ export class CommunicationAgent extends BaseAgent {
             targetChannel: data.channelId,
           },
         };
+      }
+    }
+
+    // If a channel check was performed, attach rich Block Kit formatting
+    const checkExec = toolsExecuted.find(
+      t => t.toolName === 'check_unanswered_messages' && t.result.success
+    );
+
+    if (checkExec) {
+      const data = checkExec.result.data as Record<string, unknown>;
+      if (data) {
+        const blocks = buildChannelCheckBlocks(data as any);
+        return { ...base, blocks };
       }
     }
 

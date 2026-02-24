@@ -392,9 +392,20 @@ export async function executeCheckUnansweredMessages(input: {
   }[] = [];
 
   let totalUnanswered = 0;
+  let skippedChannels = 0;
 
   for (const ch of channelsToScan) {
     try {
+      // Try to join the channel first (works for public channels)
+      try {
+        await slackApp.client.conversations.join({
+          token: config.SLACK_BOT_TOKEN,
+          channel: ch.id,
+        });
+      } catch (joinErr) {
+        // Ignore join errors — bot may already be in the channel, or it's private
+      }
+
       const history = await slackApp.client.conversations.history({
         token: config.SLACK_BOT_TOKEN,
         channel: ch.id,
@@ -432,23 +443,32 @@ export async function executeCheckUnansweredMessages(input: {
         });
       }
     } catch (err) {
-      logger.warn({ err, channel: ch.name }, 'Failed to read channel for unanswered check');
+      const errMsg = (err as Error).message || '';
+      if (errMsg.includes('channel_not_found') || errMsg.includes('not_in_channel')) {
+        skippedChannels++;
+        logger.debug({ channel: ch.name }, 'Skipped channel — bot not a member (private channel)');
+      } else {
+        logger.warn({ err, channel: ch.name }, 'Failed to read channel for unanswered check');
+      }
       // Continue scanning other channels
     }
   }
 
+  const scannedCount = channelsToScan.length - skippedChannels;
+  const skipNote = skippedChannels > 0 ? ` (${skippedChannels} private channel(s) skipped — invite the bot to access them)` : '';
+
   if (totalUnanswered === 0) {
     return {
       success: true,
-      data: { channelsScanned: channelsToScan.length, unanswered: [] },
-      message: `Scanned ${channelsToScan.length} channel(s) — no unanswered messages found in the last ${hoursBack} hours.`,
+      data: { channelsScanned: scannedCount, skippedChannels, unanswered: [] },
+      message: `Scanned ${scannedCount} channel(s) — no unanswered messages found in the last ${hoursBack} hours.${skipNote}`,
     };
   }
 
   return {
     success: true,
-    data: { channelsScanned: channelsToScan.length, totalUnanswered, unansweredByChannel },
-    message: `Found ${totalUnanswered} unanswered message(s) across ${unansweredByChannel.length} channel(s) in the last ${hoursBack} hours.`,
+    data: { channelsScanned: scannedCount, skippedChannels, totalUnanswered, unansweredByChannel },
+    message: `Found ${totalUnanswered} unanswered message(s) across ${unansweredByChannel.length} channel(s) in the last ${hoursBack} hours. Scanned ${scannedCount} channel(s).${skipNote}`,
   };
 }
 
