@@ -1,8 +1,8 @@
-import adhan from 'adhan';
+import * as adhan from 'adhan';
 import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
 
-const { Coordinates, PrayerTimes, CalculationMethod } = adhan;
+const { Coordinates, PrayerTimes, CalculationMethod } = (adhan as any).default || adhan;
 
 const coordinates = new Coordinates(config.LATITUDE, config.LONGITUDE);
 
