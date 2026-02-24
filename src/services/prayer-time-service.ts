@@ -1,13 +1,14 @@
-import * as adhan from 'adhan';
+// Use require() for adhan — its ESM/CJS dual export doesn't play nice with TS compilation
+const adhan = require('adhan');
 import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
 
-const { Coordinates, PrayerTimes, CalculationMethod } = (adhan as any).default || adhan;
+const { Coordinates, PrayerTimes, CalculationMethod } = adhan;
 
 const coordinates = new Coordinates(config.LATITUDE, config.LONGITUDE);
 
-function getCalculationParams(): adhan.CalculationParameters {
-  const methodMap: Record<string, () => adhan.CalculationParameters> = {
+function getCalculationParams(): any {
+  const methodMap: Record<string, () => any> = {
     ISNA: () => CalculationMethod.NorthAmerica(),
     UmmAlQura: () => CalculationMethod.UmmAlQura(),
     MuslimWorldLeague: () => CalculationMethod.MuslimWorldLeague(),
@@ -25,7 +26,7 @@ function getCalculationParams(): adhan.CalculationParameters {
 
 const params = getCalculationParams();
 
-export function getTodayPrayerTimes(): adhan.PrayerTimes {
+export function getTodayPrayerTimes(): any {
   return new PrayerTimes(coordinates, new Date(), params);
 }
 
