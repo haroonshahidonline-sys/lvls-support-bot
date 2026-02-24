@@ -18,8 +18,8 @@ Categories:
   Patterns: "Assign X to Y", "Tell X to do Y by Z", "X needs to handle Y", "Create a task for X"
   Params: { assignee_name, task_description, deadline_raw, priority }
 
-- TASK_STATUS: The founder asks about task status, pending items, or workload.
-  Patterns: "What's pending for X?", "Status update", "What's overdue?", "Show me tasks due this week"
+- TASK_STATUS: The founder asks about task status, pending items, workload, or what needs attention.
+  Patterns: "What's pending for X?", "Status update", "What's overdue?", "Show me tasks due this week", "Anything that needs my attention?", "Check what's going on", "What do I need to do?", "Any updates?", "Check slack for me"
   Params: { person_name, scope: "person"|"all"|"overdue"|"this_week" }
 
 - TASK_COMPLETE: The founder wants to mark a task as done.
