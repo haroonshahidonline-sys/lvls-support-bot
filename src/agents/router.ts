@@ -5,7 +5,7 @@ import {
   type ClaudeMessage,
 } from '../services/claude.js';
 import { ROUTER_TOOLS } from './tools/definitions.js';
-import { AgentContext, RouterResult, Intent } from '../types/agent.js';
+import type { AgentContext, RouterResult, Intent } from '../types/agent.js';
 import { INTENTS } from '../config/constants.js';
 import { logger } from '../utils/logger.js';
 
@@ -56,7 +56,10 @@ Categories:
 - GENERAL_QUERY: Greetings, questions, help, or anything that doesn't fit above.
   Params: { topic }
 
-Be decisive. When in doubt between GENERAL_QUERY and CHANNEL_CHECK, prefer CHANNEL_CHECK if anything about channels/messages is mentioned.`;
+Be decisive. When in doubt between GENERAL_QUERY and CHANNEL_CHECK, prefer CHANNEL_CHECK if anything about channels/messages is mentioned.
+
+## Thread Continuity
+If thread history is provided, the user is replying to a previous conversation. Classify based on what the FULL conversation is about, not just the latest message in isolation. A reply like "make it shorter" or "no change it" should inherit the intent of the original request (e.g., if they asked to draft a message, a follow-up tweak is COMMUNICATION_DRAFT; if they asked for a rewrite, it's CONTENT_REWRITE).`;
 
 /**
  * Router Agent — uses Claude tool_use to classify messages into intents.
@@ -69,9 +72,20 @@ export async function classifyMessage(message: string, context: AgentContext): P
     `[User: ${context.userId}]`,
   ].join(' ');
 
-  const messages: ClaudeMessage[] = [
-    { role: 'user', content: `${contextPrefix}\n\n${message}` },
-  ];
+  // Include thread history so the router can classify follow-up messages correctly
+  const messages: ClaudeMessage[] = [];
+  if (context.threadHistory && context.threadHistory.length > 0) {
+    // Summarize thread as context for the router
+    const threadSummary = context.threadHistory
+      .map(m => `${m.role === 'user' ? 'Founder' : 'Bot'}: ${m.content.substring(0, 200)}`)
+      .join('\n');
+    messages.push({
+      role: 'user',
+      content: `${contextPrefix}\n\n[Thread history (previous messages in this conversation):\n${threadSummary}\n]\n\nLatest message to classify: ${message}`,
+    });
+  } else {
+    messages.push({ role: 'user', content: `${contextPrefix}\n\n${message}` });
+  }
 
   try {
     const response = await callClaudeWithTools({

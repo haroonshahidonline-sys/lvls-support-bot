@@ -8,6 +8,11 @@ export interface RouterResult {
   params: Record<string, unknown>;
 }
 
+export interface ThreadMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 export interface AgentContext {
   channelId: string;
   channelType: string;
@@ -16,6 +21,8 @@ export interface AgentContext {
   isClientChannel: boolean;
   requiresApproval: boolean;
   messageText: string;
+  /** Previous messages in this thread (for conversation continuity) */
+  threadHistory?: ThreadMessage[];
 }
 
 export interface AgentResponse {

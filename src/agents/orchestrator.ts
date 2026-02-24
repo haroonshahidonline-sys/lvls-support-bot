@@ -96,9 +96,16 @@ export async function orchestrate(message: string, context: AgentContext): Promi
     case INTENTS.GENERAL_QUERY:
     default: {
       // General queries go through simple Claude (no tools needed)
+      // Include thread history for conversation continuity
+      const generalMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+      if (context.threadHistory && context.threadHistory.length > 0) {
+        generalMessages.push(...context.threadHistory);
+      }
+      generalMessages.push({ role: 'user', content: message });
+
       const generalResponse = await callClaude({
         systemPrompt: GENERAL_SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: message }],
+        messages: generalMessages,
       });
       return { text: generalResponse, action: 'none' };
     }

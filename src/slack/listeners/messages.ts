@@ -2,7 +2,7 @@ import { App } from '@slack/bolt';
 import { orchestrate } from '../../agents/orchestrator.js';
 import { founderOnly } from '../middleware/founder-only.js';
 import { channelGuard } from '../middleware/channel-guard.js';
-import { AgentContext } from '../../types/agent.js';
+import { AgentContext, ThreadMessage } from '../../types/agent.js';
 import { config } from '../../config/index.js';
 import { handleError } from '../../utils/error-handler.js';
 import { logger } from '../../utils/logger.js';
@@ -34,6 +34,38 @@ export function registerMessageListeners(app: App): void {
         channel: msg.channel,
         textPreview: msg.text.substring(0, 100),
       }, 'Processing message');
+
+      // Fetch thread history for conversation continuity
+      if (msg.thread_ts) {
+        try {
+          const threadResult = await app.client.conversations.replies({
+            token: config.SLACK_BOT_TOKEN,
+            channel: msg.channel || '',
+            ts: msg.thread_ts,
+            limit: 20, // Last 20 messages in thread
+          });
+
+          const botInfo = await app.client.auth.test();
+          const botUserId = botInfo.user_id;
+
+          // Build conversation history (exclude the current message)
+          const history: ThreadMessage[] = [];
+          for (const m of threadResult.messages || []) {
+            if (m.ts === msg.ts) continue; // Skip current message
+            if (!m.text) continue;
+            const role = m.user === botUserId ? 'assistant' : 'user';
+            history.push({ role, content: m.text });
+          }
+
+          if (history.length > 0) {
+            agentContext.threadHistory = history;
+            logger.debug({ threadMessages: history.length }, 'Loaded thread history');
+          }
+        } catch (e) {
+          // Non-critical — continue without thread history
+          logger.debug({ err: e }, 'Could not fetch thread history');
+        }
+      }
 
       // Show typing indicator — post a temporary "thinking" message
       try {

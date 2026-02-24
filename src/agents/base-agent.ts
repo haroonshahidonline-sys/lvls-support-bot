@@ -49,10 +49,14 @@ export abstract class BaseAgent {
     const totalTokens = { input: 0, output: 0 };
     let turns = 0;
 
-    // Build initial messages
-    const messages: ClaudeMessage[] = [
-      { role: 'user', content: `${contextPrefix}\n\n${message}` },
-    ];
+    // Build initial messages — include thread history for conversation continuity
+    const messages: ClaudeMessage[] = [];
+    if (context.threadHistory && context.threadHistory.length > 0) {
+      for (const msg of context.threadHistory) {
+        messages.push({ role: msg.role, content: msg.content });
+      }
+    }
+    messages.push({ role: 'user', content: `${contextPrefix}\n\n${message}` });
 
     logger.info({ agent: this.name, messageLength: message.length }, `${this.name} starting agentic run`);
 
@@ -171,9 +175,16 @@ export abstract class BaseAgent {
    */
   async chat(message: string, context: AgentContext): Promise<string> {
     const contextPrefix = this.buildContextPrefix(context);
+    const messages: ClaudeMessage[] = [];
+    if (context.threadHistory && context.threadHistory.length > 0) {
+      for (const msg of context.threadHistory) {
+        messages.push({ role: msg.role, content: msg.content });
+      }
+    }
+    messages.push({ role: 'user', content: `${contextPrefix}\n\n${message}` });
     return callClaude({
       systemPrompt: this.systemPrompt,
-      messages: [{ role: 'user', content: `${contextPrefix}\n\n${message}` }],
+      messages,
     });
   }
 
