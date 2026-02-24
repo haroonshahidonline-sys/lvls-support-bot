@@ -199,6 +199,19 @@ export const COMMUNICATION_TOOLS: Tool[] = [
       required: ['message'],
     },
   },
+  {
+    name: 'check_unanswered_messages',
+    description: 'Scan Slack channels for unanswered messages — messages with no thread replies. Can check a specific channel by name/ID, or scan all client channels at once.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        channel_name: { type: 'string', description: 'Specific channel name or ID to check. Omit to scan all client channels.' },
+        scope: { type: 'string', enum: ['all_client', 'all_internal', 'specific'], description: 'Which channels to scan. Default: all_client' },
+        hours_back: { type: 'number', description: 'How many hours back to look for unanswered messages. Default: 24' },
+      },
+      required: [],
+    },
+  },
 ];
 
 // ============================================================
@@ -214,7 +227,7 @@ export const ROUTER_TOOLS: Tool[] = [
       properties: {
         intent: {
           type: 'string',
-          enum: ['TASK_ASSIGN', 'TASK_STATUS', 'TASK_COMPLETE', 'CONTENT_REWRITE', 'COMMUNICATION_SEND', 'COMMUNICATION_DRAFT', 'ESCALATION', 'GENERAL_QUERY'],
+          enum: ['TASK_ASSIGN', 'TASK_STATUS', 'TASK_COMPLETE', 'CONTENT_REWRITE', 'COMMUNICATION_SEND', 'COMMUNICATION_DRAFT', 'CHANNEL_CHECK', 'ESCALATION', 'GENERAL_QUERY'],
           description: 'The classified intent',
         },
         confidence: { type: 'number', description: 'Confidence score 0.0-1.0' },

@@ -344,6 +344,115 @@ export async function executeDmFounder(input: {
 }
 
 // ============================================================
+// CHANNEL CHECK TOOLS EXECUTION
+// ============================================================
+
+export async function executeCheckUnansweredMessages(input: {
+  channel_name?: string;
+  scope?: string;
+  hours_back?: number;
+}): Promise<ToolResult> {
+  if (!slackApp) return { success: false, data: null, message: 'Slack app not initialized.' };
+
+  const hoursBack = input.hours_back || 24;
+  const oldest = Math.floor((Date.now() - hoursBack * 60 * 60 * 1000) / 1000).toString();
+  const scope = input.scope || (input.channel_name ? 'specific' : 'all_client');
+
+  // Resolve which channels to scan
+  let channelsToScan: { id: string; name: string; type: string }[] = [];
+
+  if (scope === 'specific' && input.channel_name) {
+    // Look up specific channel
+    const channelConfig = await channelService.getChannelConfig(input.channel_name);
+    if (channelConfig) {
+      channelsToScan.push({ id: channelConfig.channel_id, name: channelConfig.channel_name || channelConfig.channel_id, type: channelConfig.channel_type });
+    } else {
+      // Try using it as a channel ID directly
+      channelsToScan.push({ id: input.channel_name, name: input.channel_name, type: 'unknown' });
+    }
+  } else {
+    // Query all channels of the requested type from DB
+    const { query: dbQuery } = await import('../../database/connection.js');
+    const channelType = scope === 'all_internal' ? 'internal' : 'client';
+    const result = await dbQuery(
+      `SELECT channel_id, channel_name, channel_type FROM channels_config WHERE channel_type = $1`,
+      [channelType]
+    );
+    channelsToScan = result.rows.map((r: any) => ({ id: r.channel_id, name: r.channel_name, type: r.channel_type }));
+  }
+
+  if (channelsToScan.length === 0) {
+    return { success: false, data: null, message: 'No channels found to scan.' };
+  }
+
+  const unansweredByChannel: {
+    channel: string;
+    channelId: string;
+    messages: { user: string; text: string; ts: string; age: string }[];
+  }[] = [];
+
+  let totalUnanswered = 0;
+
+  for (const ch of channelsToScan) {
+    try {
+      const history = await slackApp.client.conversations.history({
+        token: config.SLACK_BOT_TOKEN,
+        channel: ch.id,
+        oldest,
+        limit: 50,
+      });
+
+      const unanswered: { user: string; text: string; ts: string; age: string }[] = [];
+
+      for (const msg of history.messages || []) {
+        const m = msg as any;
+        // Skip bot messages, subtypes (joins, topic changes, etc.), and threaded replies
+        if (m.subtype || m.bot_id || m.thread_ts !== undefined) continue;
+        // Skip messages that already have replies
+        if (m.reply_count && m.reply_count > 0) continue;
+
+        const msgAge = Date.now() / 1000 - parseFloat(m.ts);
+        const hoursAgo = Math.round(msgAge / 3600);
+        const ageLabel = hoursAgo < 1 ? 'less than 1h ago' : `${hoursAgo}h ago`;
+
+        unanswered.push({
+          user: m.user || 'unknown',
+          text: (m.text || '').substring(0, 200),
+          ts: m.ts,
+          age: ageLabel,
+        });
+      }
+
+      if (unanswered.length > 0) {
+        totalUnanswered += unanswered.length;
+        unansweredByChannel.push({
+          channel: ch.name,
+          channelId: ch.id,
+          messages: unanswered,
+        });
+      }
+    } catch (err) {
+      logger.warn({ err, channel: ch.name }, 'Failed to read channel for unanswered check');
+      // Continue scanning other channels
+    }
+  }
+
+  if (totalUnanswered === 0) {
+    return {
+      success: true,
+      data: { channelsScanned: channelsToScan.length, unanswered: [] },
+      message: `Scanned ${channelsToScan.length} channel(s) — no unanswered messages found in the last ${hoursBack} hours.`,
+    };
+  }
+
+  return {
+    success: true,
+    data: { channelsScanned: channelsToScan.length, totalUnanswered, unansweredByChannel },
+    message: `Found ${totalUnanswered} unanswered message(s) across ${unansweredByChannel.length} channel(s) in the last ${hoursBack} hours.`,
+  };
+}
+
+// ============================================================
 // TOOL DISPATCH
 // ============================================================
 
@@ -363,6 +472,7 @@ export async function executeTool(toolName: string, input: Record<string, unknow
     case 'lookup_channel': return executeLookupChannel(input as any);
     case 'schedule_message': return executeScheduleMessage(input as any);
     case 'dm_founder': return executeDmFounder(input as any);
+    case 'check_unanswered_messages': return executeCheckUnansweredMessages(input as any);
 
     // Content tools are handled differently (they return Claude text, not DB actions)
     case 'rewrite_content':

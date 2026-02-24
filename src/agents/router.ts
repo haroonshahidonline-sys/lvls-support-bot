@@ -38,6 +38,10 @@ Categories:
   Patterns: "Draft a message for", "Write a response to", "Prepare a message"
   Params: { target, message_content }
 
+- CHANNEL_CHECK: The founder wants to check channels for unanswered messages, unread activity, or see what needs a response.
+  Patterns: "Check for unanswered messages", "Any unanswered messages?", "Check client channels", "What messages need a reply?", "Scan channels for me", "Any unread messages?", "Check if anyone messaged", "What's going on in the channels?", "Check slack channels", "Any clients waiting for a reply?"
+  Params: { channel_name, scope: "all_client"|"all_internal"|"specific", hours_back }
+
 - ESCALATION: Something urgent — a complaint, a crisis, or an issue needing immediate attention.
   Params: { summary, urgency: "high"|"critical" }
 

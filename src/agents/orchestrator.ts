@@ -79,6 +79,7 @@ export async function orchestrate(message: string, context: AgentContext): Promi
 
     case INTENTS.COMMUNICATION_SEND:
     case INTENTS.COMMUNICATION_DRAFT:
+    case INTENTS.CHANNEL_CHECK:
       result = await communicationAgent.run(enrichedMessage, context);
       break;
 
