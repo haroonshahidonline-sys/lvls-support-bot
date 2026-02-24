@@ -79,6 +79,7 @@ export async function classifyMessage(message: string, context: AgentContext): P
       messages,
       tools: ROUTER_TOOLS,
       maxTokens: 512,
+      model: 'claude-haiku-4-5-20251001',
     });
 
     const toolUseBlocks = extractToolUse(response.content);

@@ -25,6 +25,9 @@ export function registerMessageListeners(app: App): void {
       messageText: msg.text,
     };
 
+    // Hoist so catch block can clean it up
+    let thinkingTs: string | undefined;
+
     try {
       logger.info({
         user: msg.user,
@@ -33,7 +36,6 @@ export function registerMessageListeners(app: App): void {
       }, 'Processing message');
 
       // Show typing indicator — post a temporary "thinking" message
-      let thinkingTs: string | undefined;
       try {
         const thinkingResult = await app.client.chat.postMessage({
           token: config.SLACK_BOT_TOKEN,
@@ -91,6 +93,17 @@ export function registerMessageListeners(app: App): void {
       }
 
     } catch (err) {
+      // Clean up "Thinking..." message on error
+      if (thinkingTs) {
+        try {
+          await app.client.chat.delete({
+            token: config.SLACK_BOT_TOKEN,
+            channel: msg.channel || '',
+            ts: thinkingTs,
+          });
+        } catch (_e) { /* Non-critical */ }
+      }
+
       logger.error({ err, user: msg.user, channel: msg.channel }, 'Message handling failed');
       const errorMessage = handleError(err, 'message-handler');
       await say({ text: errorMessage, thread_ts: msg.thread_ts || msg.ts });

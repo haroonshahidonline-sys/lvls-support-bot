@@ -11,6 +11,12 @@ const AVAILABLE_MODELS: Record<string, string> = {
   haiku: 'claude-haiku-4-5-20251001',
 };
 
+// Fallback chain: if primary model is overloaded, try these in order
+const FALLBACK_CHAIN: string[] = [
+  'claude-sonnet-4-20250514',
+  'claude-haiku-4-5-20251001',
+];
+
 let activeModel: string = config.CLAUDE_MODEL;
 
 export function getActiveModel(): string {
@@ -78,17 +84,35 @@ export interface ClaudeToolResponse {
 }
 
 /**
- * Simple text call to Claude (no tools). Used for general queries and content generation.
+ * Determine if an error is a model overload (529) or rate limit (429).
  */
-export async function callClaude(options: ClaudeOptions): Promise<string> {
+function isOverloadError(err: unknown): boolean {
+  const msg = (err as Error).message || '';
+  return msg.includes('529') || msg.includes('overloaded') || msg.includes('529') || msg.includes('rate_limit');
+}
+
+/**
+ * Get fallback models to try (excluding the one that failed).
+ */
+function getFallbackModels(failedModel: string): string[] {
+  return FALLBACK_CHAIN.filter(m => m !== failedModel);
+}
+
+/**
+ * Simple text call to Claude (no tools). Used for general queries and content generation.
+ * Auto-falls back to alternate models on overload.
+ */
+export async function callClaude(options: ClaudeOptions & { model?: string }): Promise<string> {
   const { systemPrompt, messages, maxTokens = 1024, temperature = 0.3 } = options;
+  const modelToUse = options.model || activeModel;
 
   let lastError: Error | null = null;
 
-  for (let attempt = 0; attempt < 3; attempt++) {
+  // Try primary model with 2 retries
+  for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const response = await client.messages.create({
-        model: activeModel,
+        model: modelToUse,
         max_tokens: maxTokens,
         temperature,
         system: systemPrompt,
@@ -101,6 +125,7 @@ export async function callClaude(options: ClaudeOptions): Promise<string> {
       }
 
       logger.debug({
+        model: modelToUse,
         inputTokens: response.usage.input_tokens,
         outputTokens: response.usage.output_tokens,
       }, 'Claude API call completed');
@@ -108,30 +133,53 @@ export async function callClaude(options: ClaudeOptions): Promise<string> {
       return textBlock.text;
     } catch (err) {
       lastError = err as Error;
-      logger.warn({ attempt: attempt + 1, error: (err as Error).message }, 'Claude API call failed, retrying...');
-
-      if (attempt < 2) {
-        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+      if (isOverloadError(err) && attempt === 0) {
+        logger.warn({ model: modelToUse }, 'Model overloaded, retrying once...');
+        await new Promise(resolve => setTimeout(resolve, 500));
+        continue;
       }
+      break;
     }
   }
 
-  throw lastError || new Error('Claude API call failed after retries');
+  // Fallback to alternate models
+  for (const fallbackModel of getFallbackModels(modelToUse)) {
+    try {
+      logger.info({ from: modelToUse, to: fallbackModel }, 'Falling back to alternate model');
+      const response = await client.messages.create({
+        model: fallbackModel,
+        max_tokens: maxTokens,
+        temperature,
+        system: systemPrompt,
+        messages: messages as MessageParam[],
+      });
+
+      const textBlock = response.content.find(b => b.type === 'text');
+      if (textBlock && textBlock.type === 'text') return textBlock.text;
+    } catch (err) {
+      logger.warn({ model: fallbackModel, error: (err as Error).message }, 'Fallback model also failed');
+    }
+  }
+
+  throw lastError || new Error('All Claude models failed');
 }
 
 /**
  * Call Claude with tools enabled. Returns raw content blocks so the caller
  * can inspect tool_use vs text blocks and run the agentic loop.
+ * Auto-falls back to alternate models on overload.
  */
-export async function callClaudeWithTools(options: ClaudeToolOptions): Promise<ClaudeToolResponse> {
+export async function callClaudeWithTools(options: ClaudeToolOptions & { model?: string }): Promise<ClaudeToolResponse> {
   const { systemPrompt, messages, tools, maxTokens = 4096, temperature = 0.3 } = options;
+  const modelToUse = options.model || activeModel;
 
   let lastError: Error | null = null;
 
-  for (let attempt = 0; attempt < 3; attempt++) {
+  // Try primary model with 2 retries
+  for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const response = await client.messages.create({
-        model: activeModel,
+        model: modelToUse,
         max_tokens: maxTokens,
         temperature,
         system: systemPrompt,
@@ -140,6 +188,7 @@ export async function callClaudeWithTools(options: ClaudeToolOptions): Promise<C
       });
 
       logger.debug({
+        model: modelToUse,
         inputTokens: response.usage.input_tokens,
         outputTokens: response.usage.output_tokens,
         stopReason: response.stop_reason,
@@ -156,15 +205,49 @@ export async function callClaudeWithTools(options: ClaudeToolOptions): Promise<C
       };
     } catch (err) {
       lastError = err as Error;
-      logger.warn({ attempt: attempt + 1, error: (err as Error).message }, 'Claude tool_use call failed, retrying...');
-
-      if (attempt < 2) {
-        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+      if (isOverloadError(err) && attempt === 0) {
+        logger.warn({ model: modelToUse }, 'Model overloaded (tool_use), retrying once...');
+        await new Promise(resolve => setTimeout(resolve, 500));
+        continue;
       }
+      break;
     }
   }
 
-  throw lastError || new Error('Claude tool_use call failed after retries');
+  // Fallback to alternate models
+  for (const fallbackModel of getFallbackModels(modelToUse)) {
+    try {
+      logger.info({ from: modelToUse, to: fallbackModel }, 'Falling back to alternate model (tool_use)');
+      const response = await client.messages.create({
+        model: fallbackModel,
+        max_tokens: maxTokens,
+        temperature,
+        system: systemPrompt,
+        tools,
+        messages: messages as MessageParam[],
+      });
+
+      logger.debug({
+        model: fallbackModel,
+        inputTokens: response.usage.input_tokens,
+        outputTokens: response.usage.output_tokens,
+        stopReason: response.stop_reason,
+      }, 'Fallback tool_use call completed');
+
+      return {
+        content: response.content,
+        stopReason: response.stop_reason,
+        usage: {
+          inputTokens: response.usage.input_tokens,
+          outputTokens: response.usage.output_tokens,
+        },
+      };
+    } catch (err) {
+      logger.warn({ model: fallbackModel, error: (err as Error).message }, 'Fallback model also failed (tool_use)');
+    }
+  }
+
+  throw lastError || new Error('All Claude models failed (tool_use)');
 }
 
 /**
