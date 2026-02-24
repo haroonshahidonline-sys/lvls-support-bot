@@ -201,12 +201,12 @@ export const COMMUNICATION_TOOLS: Tool[] = [
   },
   {
     name: 'check_unanswered_messages',
-    description: 'Scan Slack channels for unanswered messages — messages with no thread replies. Can check a specific channel by name/ID, or scan all client channels at once.',
+    description: 'Scan Slack channels for unanswered messages — messages with no thread replies. Can check a specific channel by name (fuzzy search works), or scan all channels. Default scans ALL channels.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        channel_name: { type: 'string', description: 'Specific channel name or ID to check. Omit to scan all client channels.' },
-        scope: { type: 'string', enum: ['all_client', 'all_internal', 'specific'], description: 'Which channels to scan. Default: all_client' },
+        channel_name: { type: 'string', description: 'Specific channel name to check (fuzzy search — partial names work, e.g. "mayz" finds "mayz--dropxsupply"). Omit to scan all channels.' },
+        scope: { type: 'string', enum: ['all', 'all_client', 'all_internal', 'specific'], description: 'Which channels to scan. Default: all (every channel the bot is in)' },
         hours_back: { type: 'number', description: 'How many hours back to look for unanswered messages. Default: 24' },
       },
       required: [],

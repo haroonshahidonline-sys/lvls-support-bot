@@ -356,27 +356,43 @@ export async function executeCheckUnansweredMessages(input: {
 
   const hoursBack = input.hours_back || 24;
   const oldest = Math.floor((Date.now() - hoursBack * 60 * 60 * 1000) / 1000).toString();
-  const scope = input.scope || (input.channel_name ? 'specific' : 'all_client');
+  const scope = input.scope || (input.channel_name ? 'specific' : 'all');
+
+  const { query: dbQuery } = await import('../../database/connection.js');
 
   // Resolve which channels to scan
   let channelsToScan: { id: string; name: string; type: string }[] = [];
 
   if (scope === 'specific' && input.channel_name) {
-    // Look up specific channel
-    const channelConfig = await channelService.getChannelConfig(input.channel_name);
-    if (channelConfig) {
-      channelsToScan.push({ id: channelConfig.channel_id, name: channelConfig.channel_name || channelConfig.channel_id, type: channelConfig.channel_type });
+    // Fuzzy search by name, client_name, or channel_id
+    const searchTerm = input.channel_name.toLowerCase().replace(/\s+/g, '%');
+    const result = await dbQuery(
+      `SELECT channel_id, channel_name, channel_type FROM channels_config
+       WHERE LOWER(channel_name) LIKE $1
+          OR LOWER(client_name) LIKE $1
+          OR channel_id = $2
+       LIMIT 5`,
+      [`%${searchTerm}%`, input.channel_name]
+    );
+
+    if (result.rows.length > 0) {
+      channelsToScan = result.rows.map((r: any) => ({ id: r.channel_id, name: r.channel_name, type: r.channel_type }));
     } else {
-      // Try using it as a channel ID directly
-      channelsToScan.push({ id: input.channel_name, name: input.channel_name, type: 'unknown' });
+      return { success: false, data: null, message: `No channel found matching "${input.channel_name}". Try a different name or check the exact channel name in Slack.` };
     }
   } else {
-    // Query all channels of the requested type from DB
-    const { query: dbQuery } = await import('../../database/connection.js');
-    const channelType = scope === 'all_internal' ? 'internal' : 'client';
+    // Build query based on scope
+    let whereClause: string;
+    if (scope === 'all_internal') {
+      whereClause = `WHERE channel_type = 'internal'`;
+    } else if (scope === 'all_client') {
+      whereClause = `WHERE channel_type = 'client'`;
+    } else {
+      // 'all' — scan everything except general/random
+      whereClause = `WHERE channel_name NOT IN ('general', 'random')`;
+    }
     const result = await dbQuery(
-      `SELECT channel_id, channel_name, channel_type FROM channels_config WHERE channel_type = $1`,
-      [channelType]
+      `SELECT channel_id, channel_name, channel_type FROM channels_config ${whereClause}`
     );
     channelsToScan = result.rows.map((r: any) => ({ id: r.channel_id, name: r.channel_name, type: r.channel_type }));
   }
