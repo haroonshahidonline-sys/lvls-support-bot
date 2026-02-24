@@ -1,0 +1,41 @@
+{
+  "name": "lvls-support-bot",
+  "version": "1.0.0",
+  "description": "LVL'S Support - AI Slack bot for LVL'S Digital Marketing Agency",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "dev:db": "docker compose -f docker-compose.local.yml up -d",
+    "start": "tsx src/index.ts",
+    "start:prod": "node dist/index.js",
+    "build": "tsc",
+    "migrate": "tsx scripts/setup-db.ts",
+    "seed": "tsx scripts/seed-team.ts",
+    "test": "vitest",
+    "test:claude": "tsx scripts/test-claude.ts"
+  },
+  "keywords": ["slack", "bot", "ai", "claude"],
+  "license": "PRIVATE",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@slack/bolt": "^4.1.0",
+    "adhan": "^4.4.3",
+    "bullmq": "^5.34.0",
+    "date-fns": "^4.1.0",
+    "date-fns-tz": "^3.2.0",
+    "dotenv": "^16.4.0",
+    "pg": "^8.13.0",
+    "pino": "^9.6.0",
+    "pino-pretty": "^13.0.0",
+    "uuid": "^11.1.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.0",
+    "@types/uuid": "^10.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}
